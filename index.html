@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
   <title>Tour Leader</title>
-  <link rel="stylesheet" href="style.css?v=waitflow1" />
+  <link rel="stylesheet" href="style.css?v=planroute1" />
 </head>
 <body>
   <header class="topbar">
@@ -43,6 +43,16 @@
         <p id="currentWindow" class="muted">Choose a station and press Start now.</p>
         <p id="nextStation" class="next">Location: -</p>
       </div>
+
+      <section class="card">
+        <h2>Planned route</h2>
+        <div id="routePlanList"></div>
+        <button class="smallBtn" onclick="addPlanStepSafe()">+ Add route step</button>
+        <button class="primary" onclick="savePlanSafe()">Save planned route</button>
+        <button class="ghost" onclick="loadNextPlanStepSafe()">Load next planned station</button>
+        <div id="planWarnings" class="list"></div>
+        <p class="hint">Planning is checked by step number. If too many leaders choose the same limited station on the same step, it warns you before the tour.</p>
+      </section>
 
       <section class="card">
         <h2>Station control</h2>
@@ -94,6 +104,6 @@
       }
     }, 4000);
   </script>
-  <script src="app.js?v=waitflow1"></script>
+  <script src="app.js?v=planroute1"></script>
 </body>
 </html>
