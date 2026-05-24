@@ -41,6 +41,11 @@ async function init() {
   renderOverview();
 }
 
+function setSyncStatus(text) {
+  const el = $("syncStatus");
+  if (el) el.textContent = text;
+}
+
 function fillGroupSelect() {
   const select = $("groupSelect");
   for (let i = 1; i <= 20; i++) {
@@ -73,7 +78,7 @@ async function initStorage() {
   groups = loadLocalGroups();
 
   if (!firebaseConfig) {
-    $("syncStatus").textContent = "Offline/local mode";
+    setSyncStatus("Offline/local mode");
     return;
   }
 
@@ -82,25 +87,32 @@ async function initStorage() {
     const { getFirestore, doc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     const app = initializeApp(firebaseConfig);
     db = { firestore: getFirestore(app), doc, setDoc, onSnapshot };
-    $("syncStatus").textContent = "Online sync enabled";
+    setSyncStatus("Connecting to Firebase...");
 
     const ref = db.doc(db.firestore, "tour", "state");
     unsubscribe = db.onSnapshot(ref, async (snap) => {
+      setSyncStatus("Online sync enabled");
       if (snap.exists()) {
         groups = snap.data().groups || groups;
         saveLocalGroups(groups);
       } else {
-        await saveAllGroups();
+        await saveAllGroups(false);
       }
       if (selectedGroupId) {
         loadRouteIntoUI();
         updateCurrentDisplay();
       }
       renderOverview();
+    }, (err) => {
+      console.error(err);
+      db = null;
+      setSyncStatus(`Firebase error: ${err.code || err.message}`);
+      alert("Firebase cannot sync. Most likely: Firestore Database was not created, or Firestore rules block read/write.");
     });
   } catch (err) {
     console.error(err);
-    $("syncStatus").textContent = "Firebase error - local mode";
+    db = null;
+    setSyncStatus(`Firebase error: ${err.code || err.message}`);
   }
 }
 
@@ -116,11 +128,20 @@ function saveLocalGroups(data) {
   localStorage.setItem("tourGroups", JSON.stringify(data));
 }
 
-async function saveAllGroups() {
+async function saveAllGroups(showError = true) {
   saveLocalGroups(groups);
-  if (db) {
+  if (!db) return false;
+
+  try {
     const ref = db.doc(db.firestore, "tour", "state");
     await db.setDoc(ref, { groups }, { merge: true });
+    setSyncStatus("Online sync enabled");
+    return true;
+  } catch (err) {
+    console.error(err);
+    setSyncStatus(`Save failed: ${err.code || err.message}`);
+    if (showError) alert("Saved only on this phone. Firebase save failed. Check Firestore rules/test mode.");
+    return false;
   }
 }
 
@@ -167,18 +188,18 @@ async function saveRouteFromUI() {
 
   groups[selectedGroupId] ||= { name: selectedGroupId, status: "active", route: [] };
   groups[selectedGroupId].route = stops;
-  await saveAllGroups();
+  const synced = await saveAllGroups();
   updateCurrentDisplay();
   renderOverview();
-  alert("Route saved.");
+  alert(synced ? "Route saved and synced." : "Route saved only on this phone.");
 }
 
 async function setStatus(status) {
   groups[selectedGroupId] ||= { name: selectedGroupId, route: [] };
   groups[selectedGroupId].status = status;
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  await saveAllGroups();
-  $("lastStatus").textContent = `Status sent: ${status}`;
+  const synced = await saveAllGroups();
+  $("lastStatus").textContent = synced ? `Status sent: ${status}` : `Status saved locally only: ${status}`;
   renderOverview();
 }
 
@@ -294,5 +315,5 @@ function maybeNotify(title, body) {
 }
 
 function escapeHtml(str) {
-  return String(str).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(str).replace(/[&<>\"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
