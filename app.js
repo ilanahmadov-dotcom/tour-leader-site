@@ -44,28 +44,17 @@ let groups = {};
 let timerInterval = null;
 let unsubscribe = null;
 
-const DEFAULT_GROUPS = Array.from({ length: 20 }, (_, i) => {
-  const id = `group${i + 1}`;
-  return [id, {
-    name: `Group ${i + 1}`,
-    bigGroup: i < 8 ? "A" : "B",
-    status: "not started",
-    lastStatusTime: "",
-    active: null
-  }];
-});
-
 const $ = (id) => document.getElementById(id);
 
 init();
 
 async function init() {
-  fillGroupSelect();
   fillLocationSelect();
+  restoreLeaderInputs();
   wireButtons();
   await initStorage();
 
-  if (selectedGroupId) showDashboard(selectedGroupId);
+  if (selectedGroupId && groups[selectedGroupId]) showDashboard(selectedGroupId);
   renderOverview();
 }
 
@@ -74,16 +63,11 @@ function setSyncStatus(text) {
   if (el) el.textContent = text;
 }
 
-function fillGroupSelect() {
-  const select = $("groupSelect");
-  select.innerHTML = "";
-  for (let i = 1; i <= 20; i++) {
-    const opt = document.createElement("option");
-    opt.value = `group${i}`;
-    opt.textContent = `Group ${i} (${i <= 8 ? "A" : "B"})`;
-    select.appendChild(opt);
-  }
-  if (selectedGroupId) select.value = selectedGroupId;
+function restoreLeaderInputs() {
+  const savedName = localStorage.getItem("leaderName") || "";
+  const savedBigGroup = localStorage.getItem("bigGroup") || "A";
+  if ($("leaderNameInput")) $("leaderNameInput").value = savedName;
+  if ($("bigGroupSelect")) $("bigGroupSelect").value = savedBigGroup;
 }
 
 function fillLocationSelect() {
@@ -115,7 +99,7 @@ function fillStationSelect() {
 }
 
 function wireButtons() {
-  $("enterBtn").addEventListener("click", () => showDashboard($("groupSelect").value));
+  $("enterBtn").addEventListener("click", enterLeader);
   $("changeGroupBtn").addEventListener("click", () => {
     selectedGroupId = null;
     localStorage.removeItem("selectedGroupId");
@@ -132,6 +116,38 @@ function wireButtons() {
   document.querySelectorAll(".statusBtn").forEach(btn => {
     btn.addEventListener("click", () => setStatus(btn.dataset.status));
   });
+}
+
+function enterLeader() {
+  const name = ($("leaderNameInput").value || "").trim();
+  const bigGroup = $("bigGroupSelect").value || "A";
+  if (!name) return alert("Write your leader/team name first.");
+
+  const id = makeLeaderId(name, bigGroup);
+  localStorage.setItem("leaderName", name);
+  localStorage.setItem("bigGroup", bigGroup);
+
+  groups[id] ||= {
+    name,
+    bigGroup,
+    status: "not started",
+    lastStatusTime: "",
+    active: null,
+    userCreated: true
+  };
+  groups[id].name = name;
+  groups[id].bigGroup = bigGroup;
+  groups[id].userCreated = true;
+
+  selectedGroupId = id;
+  localStorage.setItem("selectedGroupId", id);
+  saveAllGroups(false);
+  showDashboard(id);
+}
+
+function makeLeaderId(name, bigGroup) {
+  const safe = name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}-]/gu, "").slice(0, 40) || "leader";
+  return `leader-${bigGroup}-${safe}`;
 }
 
 async function initStorage() {
@@ -177,21 +193,18 @@ async function initStorage() {
 function loadLocalGroups() {
   const saved = localStorage.getItem("tourGroups");
   if (saved) return JSON.parse(saved);
-  const obj = Object.fromEntries(DEFAULT_GROUPS);
-  localStorage.setItem("tourGroups", JSON.stringify(obj));
-  return obj;
+  localStorage.setItem("tourGroups", JSON.stringify({}));
+  return {};
 }
 
 function normalizeGroups(data) {
-  const base = Object.fromEntries(DEFAULT_GROUPS);
-  const merged = { ...base, ...(data || {}) };
-  for (let i = 1; i <= 20; i++) {
-    const id = `group${i}`;
-    merged[id] ||= base[id];
-    merged[id].name ||= `Group ${i}`;
-    merged[id].bigGroup ||= i <= 8 ? "A" : "B";
-    merged[id].status ||= "not started";
-    merged[id].active = normalizeActive(merged[id].active);
+  const merged = { ...(data || {}) };
+  for (const [id, group] of Object.entries(merged)) {
+    group.name ||= id;
+    group.bigGroup ||= id.includes("-B-") ? "B" : "A";
+    group.status ||= "not started";
+    group.lastStatusTime ||= "";
+    group.active = normalizeActive(group.active);
   }
   return merged;
 }
@@ -251,6 +264,7 @@ function showDashboard(groupId) {
 }
 
 async function startNow() {
+  if (!selectedGroupId || !groups[selectedGroupId]) return alert("Enter your name first.");
   const station = getStationInfo($("stationSelect").value);
   const duration = Number($("durationInput").value || 15);
   if (!station) return alert("Choose a station first.");
@@ -263,7 +277,6 @@ async function startNow() {
   }
 
   const startMs = Date.now();
-  groups[selectedGroupId] ||= { name: selectedGroupId, status: "active" };
   groups[selectedGroupId].active = {
     locationId: station.locationId,
     locationName: station.locationName,
@@ -294,7 +307,7 @@ async function finishStation() {
 }
 
 async function setStatus(status) {
-  groups[selectedGroupId] ||= { name: selectedGroupId, active: null };
+  if (!groups[selectedGroupId]) return alert("Enter your name first.");
   groups[selectedGroupId].status = status;
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const synced = await saveAllGroups();
@@ -349,12 +362,12 @@ function checkLiveCapacity() {
 function renderOverview() {
   const byStation = {};
   for (const station of ALL_STATIONS) byStation[station.id] = [];
-  byStation.notStarted = [];
+  const idleList = [];
 
   for (const [id, group] of Object.entries(groups)) {
     const active = group.active;
     if (!active) {
-      byStation.notStarted.push({ id, group });
+      idleList.push({ id, group });
       continue;
     }
     byStation[active.stationId] ||= [];
@@ -376,27 +389,26 @@ function renderOverview() {
       const limitText = station.capacity === Infinity ? "no limit" : `limit ${station.capacity}`;
       const box = document.createElement("div");
       box.className = "stationBox" + (isOver ? " over" : "");
-      box.innerHTML = `<div class="stationTitle"><span dir="rtl">${escapeHtml(station.name)}</span><span>${list.length} groups · ${limitText}</span></div>`;
+      box.innerHTML = `<div class="stationTitle"><span dir="rtl">${escapeHtml(station.name)}</span><span>${list.length} leaders · ${limitText}</span></div>`;
       list.forEach(({ group }) => {
         const pill = document.createElement("span");
         const status = group.status || "active";
         const left = group.active ? Math.max(0, Math.round((group.active.endMs - Date.now()) / 1000)) : 0;
         pill.className = "groupPill" + (status === "waiting" ? " waiting" : status === "delayed" ? " delayed" : status === "finished early" ? " good" : "");
-        pill.textContent = `${group.name} - ${status} - ${formatSeconds(left)}`;
+        pill.textContent = `${group.name} (${group.bigGroup || ""}) - ${status} - ${formatSeconds(left)}`;
         box.appendChild(pill);
       });
       container.appendChild(box);
     });
   });
 
-  const idleList = byStation.notStarted || [];
   const idleBox = document.createElement("div");
   idleBox.className = "stationBox";
-  idleBox.innerHTML = `<div class="stationTitle"><span>Not started / finished</span><span>${idleList.length} groups</span></div>`;
+  idleBox.innerHTML = `<div class="stationTitle"><span>Not started / finished</span><span>${idleList.length} leaders</span></div>`;
   idleList.forEach(({ group }) => {
     const pill = document.createElement("span");
     pill.className = "groupPill";
-    pill.textContent = `${group.name} - ${group.status || "not started"}`;
+    pill.textContent = `${group.name} (${group.bigGroup || ""}) - ${group.status || "not started"}`;
     idleBox.appendChild(pill);
   });
   container.appendChild(idleBox);
