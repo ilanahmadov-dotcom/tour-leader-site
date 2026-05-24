@@ -22,7 +22,7 @@
       <label for="groupSelect">Group number</label>
       <select id="groupSelect"></select>
       <button id="enterBtn" class="primary">Enter</button>
-      <p class="hint">Each leader chooses their group. Everyone can see the station overview.</p>
+      <p class="hint">Groups 1–8 are Big Group A. Groups 9–20 are Big Group B.</p>
     </section>
 
     <section id="dashboard" class="hidden">
@@ -30,14 +30,31 @@
         <div class="row between">
           <div>
             <p class="eyebrow" id="groupName">Group</p>
-            <h2 id="currentStation">No route yet</h2>
+            <h2 id="currentStation">Not started</h2>
           </div>
           <button id="changeGroupBtn" class="ghost">Change</button>
         </div>
         <div class="timer" id="timeLeft">--:--</div>
-        <p id="currentWindow" class="muted">Add your route below.</p>
-        <p id="nextStation" class="next">Next: -</p>
+        <p id="currentWindow" class="muted">Choose a station and press Start now.</p>
+        <p id="nextStation" class="next">Location: -</p>
       </div>
+
+      <section class="card">
+        <h2>Start my station</h2>
+        <label>Location
+          <select id="locationSelect"></select>
+        </label>
+        <label>Station
+          <select id="stationSelect" class="stationInput"></select>
+        </label>
+        <label>Minutes
+          <input id="durationInput" type="number" min="1" max="180" value="15" />
+        </label>
+        <p id="capacityWarning" class="conflictText hidden"></p>
+        <button id="startNowBtn" class="primary">Start now</button>
+        <button id="finishBtn" class="ghost">Finish / leave station</button>
+        <p class="hint">The timer starts from the moment you press Start now. The site checks only active groups right now.</p>
+      </section>
 
       <section class="card actions">
         <h2>Quick status</h2>
@@ -52,41 +69,13 @@
 
       <section class="card">
         <div class="row between center">
-          <h2>My route</h2>
-          <button id="addStopBtn" class="smallBtn">+ Add station</button>
-        </div>
-        <div id="routeList"></div>
-        <button id="saveRouteBtn" class="primary">Save route</button>
-        <p class="hint">Use 24-hour time, for example 09:00. Stations 1–7 allow one group only. Station 8 has no limit.</p>
-      </section>
-
-      <section class="card">
-        <div class="row between center">
-          <h2>Stations overview</h2>
+          <h2>Live station overview</h2>
           <button id="refreshBtn" class="smallBtn">Refresh</button>
         </div>
         <div id="stationsOverview"></div>
       </section>
     </section>
   </main>
-
-  <template id="stopTemplate">
-    <div class="stop">
-      <label>Station
-        <select class="stationInput"></select>
-      </label>
-      <div class="grid2">
-        <label>Start time
-          <input class="startInput" type="time" />
-        </label>
-        <label>Minutes
-          <input class="durationInput" type="number" min="1" max="180" value="15" />
-        </label>
-      </div>
-      <p class="conflictText hidden"></p>
-      <button class="removeStop ghost" type="button">Remove</button>
-    </div>
-  </template>
 
   <script type="module" src="app.js"></script>
 </body>
