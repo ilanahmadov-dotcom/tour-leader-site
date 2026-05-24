@@ -57,7 +57,7 @@
         </div>
         <div id="routeList"></div>
         <button id="saveRouteBtn" class="primary">Save route</button>
-        <p class="hint">Use 24-hour time, for example 09:00. Duration is minutes.</p>
+        <p class="hint">Use 24-hour time, for example 09:00. Stations 1–7 allow one group only. Station 8 has no limit.</p>
       </section>
 
       <section class="card">
@@ -72,8 +72,8 @@
 
   <template id="stopTemplate">
     <div class="stop">
-      <label>Station name
-        <input class="stationInput" placeholder="Station 1" />
+      <label>Station
+        <select class="stationInput"></select>
       </label>
       <div class="grid2">
         <label>Start time
@@ -83,6 +83,7 @@
           <input class="durationInput" type="number" min="1" max="180" value="15" />
         </label>
       </div>
+      <p class="conflictText hidden"></p>
       <button class="removeStop ghost" type="button">Remove</button>
     </div>
   </template>
