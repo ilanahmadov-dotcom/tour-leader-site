@@ -81,9 +81,13 @@ button {
 .actions .good { background: var(--good); }
 .actions .danger { background: var(--danger); }
 .stop { border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin: 10px 0; background: #f8fafc; }
+.stop.conflict { border-color: var(--danger); background: #fff1f2; }
+.conflictText { color: var(--danger); font-weight: 900; font-size: 14px; margin: 8px 0; }
+.stationInput { direction: rtl; text-align: right; }
 .stationBox { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 10px 0; background: #f8fafc; }
 .stationBox.over { border-color: var(--danger); background: #fef2f2; }
-.stationTitle { display: flex; justify-content: space-between; gap: 10px; font-weight: 900; }
+.stationTitle { display: flex; justify-content: space-between; gap: 10px; font-weight: 900; align-items: start; }
+.stationTitle span:first-child { text-align: right; flex: 1; }
 .groupPill { display: inline-block; margin: 6px 5px 0 0; padding: 6px 8px; border-radius: 999px; background: #e2e8f0; font-size: 13px; }
 .groupPill.waiting { background: #fef3c7; }
 .groupPill.delayed { background: #fee2e2; }
