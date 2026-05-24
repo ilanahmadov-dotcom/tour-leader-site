@@ -1,7 +1,4 @@
-// SIMPLE SETUP:
-// The site works in local mode immediately.
-// To make all phones sync, create Firebase project and paste your config below.
-const firebaseConfig = {
+var firebaseConfig = {
   apiKey: "AIzaSyDfzyKcnRFl22bv7AZcAMMMpZ54FgKavo8",
   authDomain: "tour-leader-site.firebaseapp.com",
   projectId: "tour-leader-site",
@@ -11,7 +8,7 @@ const firebaseConfig = {
   measurementId: "G-EHPXM4M8TC"
 };
 
-const LOCATIONS = [
+var LOCATIONS = [
   {
     id: "tzrif",
     name: "צריף בן גוריון",
@@ -23,7 +20,7 @@ const LOCATIONS = [
       { id: "tzrif5", name: "מפה טופוגרפית", capacity: 1 },
       { id: "tzrif6", name: "סרטון מנהיגות", capacity: 1 },
       { id: "tzrif7", name: "בן גוריון במבחן הזמן", capacity: 1 },
-      { id: "tzrif8", name: "ספסלים בחוץ, אפשר לשבת על הדשא", capacity: Infinity }
+      { id: "tzrif8", name: "ספסלים בחוץ, אפשר לשבת על הדשא", capacity: 9999 }
     ]
   },
   {
@@ -31,300 +28,274 @@ const LOCATIONS = [
     name: "קבר בן גוריון",
     stations: [
       { id: "kever1", name: "הקבר", capacity: 2 },
-      { id: "kever2", name: "הדשא", capacity: Infinity }
+      { id: "kever2", name: "הדשא", capacity: 9999 }
     ]
   }
 ];
 
-const ALL_STATIONS = LOCATIONS.flatMap(location => location.stations.map(station => ({ ...station, locationId: location.id, locationName: location.name })));
-
-let db = null;
-let selectedGroupId = localStorage.getItem("selectedGroupId") || null;
-let groups = {};
-let timerInterval = null;
-let unsubscribe = null;
-
-const $ = (id) => document.getElementById(id);
-
-init();
-
-async function init() {
-  setSyncStatus("Loading...");
-  fillLocationSelect();
-  restoreLeaderInputs();
-  wireButtons();
-  await initStorage();
-
-  if (selectedGroupId && groups[selectedGroupId]) showDashboard(selectedGroupId);
-  renderOverview();
+var ALL_STATIONS = [];
+for (var li = 0; li < LOCATIONS.length; li++) {
+  for (var si = 0; si < LOCATIONS[li].stations.length; si++) {
+    var s = LOCATIONS[li].stations[si];
+    ALL_STATIONS.push({ id: s.id, name: s.name, capacity: s.capacity, locationId: LOCATIONS[li].id, locationName: LOCATIONS[li].name });
+  }
 }
 
+var db = null;
+var selectedGroupId = localStorage.getItem("selectedGroupId") || null;
+var groups = {};
+var timerInterval = null;
+var lastNotificationMinute = "";
+
+function $(id) { return document.getElementById(id); }
+
 function setSyncStatus(text) {
-  const el = $("syncStatus");
+  var el = $("syncStatus");
   if (el) el.textContent = text;
 }
 
-function restoreLeaderInputs() {
-  const savedName = localStorage.getItem("leaderName") || "";
-  const savedBigGroup = localStorage.getItem("bigGroup") || "A";
-  if ($("leaderNameInput")) $("leaderNameInput").value = savedName;
-  if ($("bigGroupSelect")) $("bigGroupSelect").value = savedBigGroup;
+function boot() {
+  try {
+    setSyncStatus("Local mode ready");
+    fillLocationSelectSafe();
+    restoreLeaderInputs();
+    groups = normalizeGroups(loadLocalGroups());
+    if (selectedGroupId && groups[selectedGroupId]) showDashboard(selectedGroupId);
+    renderOverviewSafe();
+    loadFirebaseScripts();
+  } catch (e) {
+    setSyncStatus("Script error: " + e.message);
+    alert("Site script error: " + e.message);
+  }
 }
 
-function fillLocationSelect() {
-  const select = $("locationSelect");
+function loadFirebaseScripts() {
+  if (!firebaseConfig) return;
+  var appScript = document.createElement("script");
+  appScript.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js";
+  appScript.onload = function () {
+    var fsScript = document.createElement("script");
+    fsScript.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js";
+    fsScript.onload = initFirebaseSafe;
+    fsScript.onerror = function () { setSyncStatus("Local mode only - Firebase script failed"); };
+    document.head.appendChild(fsScript);
+  };
+  appScript.onerror = function () { setSyncStatus("Local mode only - Firebase script failed"); };
+  document.head.appendChild(appScript);
+}
+
+function initFirebaseSafe() {
+  try {
+    if (!window.firebase) { setSyncStatus("Local mode only - Firebase missing"); return; }
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    setSyncStatus("Connecting to Firebase...");
+    db.collection("tour").doc("state").onSnapshot(function (snap) {
+      setSyncStatus("Online sync enabled");
+      if (snap.exists) {
+        var data = snap.data() || {};
+        groups = normalizeGroups(data.groups || groups);
+        saveLocalGroups(groups);
+      } else {
+        saveAllGroups(false);
+      }
+      updateCurrentDisplay();
+      checkLiveCapacitySafe();
+      renderOverviewSafe();
+    }, function (err) {
+      db = null;
+      setSyncStatus("Firebase error: " + (err.code || err.message));
+      alert("Firebase cannot sync. Check Firestore rules/test mode.");
+    });
+  } catch (e) {
+    db = null;
+    setSyncStatus("Firebase error: " + e.message);
+  }
+}
+
+function restoreLeaderInputs() {
+  if ($("leaderNameInput")) $("leaderNameInput").value = localStorage.getItem("leaderName") || "";
+  if ($("bigGroupSelect")) $("bigGroupSelect").value = localStorage.getItem("bigGroup") || "A";
+}
+
+function fillLocationSelectSafe() {
+  var select = $("locationSelect");
   if (!select) return;
   select.innerHTML = "";
-  LOCATIONS.forEach(location => {
-    const opt = document.createElement("option");
-    opt.value = location.id;
-    opt.textContent = location.name;
+  for (var i = 0; i < LOCATIONS.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = LOCATIONS[i].id;
+    opt.textContent = LOCATIONS[i].name;
     select.appendChild(opt);
-  });
-  fillStationSelect();
+  }
+  fillStationSelectSafe();
 }
 
-function fillStationSelect() {
-  const locationId = $("locationSelect")?.value || LOCATIONS[0].id;
-  const stationSelect = $("stationSelect");
+function fillStationSelectSafe() {
+  var locationSelect = $("locationSelect");
+  var stationSelect = $("stationSelect");
   if (!stationSelect) return;
+  var locationId = locationSelect ? locationSelect.value : LOCATIONS[0].id;
   stationSelect.innerHTML = "";
-  const location = LOCATIONS.find(l => l.id === locationId) || LOCATIONS[0];
-  location.stations.forEach(station => {
-    const opt = document.createElement("option");
-    opt.value = station.id;
-    opt.textContent = station.name;
+  var location = LOCATIONS[0];
+  for (var i = 0; i < LOCATIONS.length; i++) {
+    if (LOCATIONS[i].id === locationId) location = LOCATIONS[i];
+  }
+  for (var j = 0; j < location.stations.length; j++) {
+    var opt = document.createElement("option");
+    opt.value = location.stations[j].id;
+    opt.textContent = location.stations[j].name;
     stationSelect.appendChild(opt);
-  });
-  checkLiveCapacity();
+  }
+  checkLiveCapacitySafe();
 }
 
-function wireButtons() {
-  $("enterBtn").addEventListener("click", enterLeader);
-  $("changeGroupBtn").addEventListener("click", () => {
-    selectedGroupId = null;
-    localStorage.removeItem("selectedGroupId");
-    $("setupCard").classList.remove("hidden");
-    $("dashboard").classList.add("hidden");
-  });
-  $("locationSelect").addEventListener("change", fillStationSelect);
-  $("stationSelect").addEventListener("change", checkLiveCapacity);
-  $("durationInput").addEventListener("input", checkLiveCapacity);
-  $("startNowBtn").addEventListener("click", startNow);
-  $("finishBtn").addEventListener("click", finishStation);
-  $("refreshBtn").addEventListener("click", renderOverview);
-  $("notifyBtn").addEventListener("click", requestNotifications);
-  document.querySelectorAll(".statusBtn").forEach(btn => {
-    btn.addEventListener("click", () => setStatus(btn.dataset.status));
-  });
-}
-
-function enterLeader() {
-  const name = ($("leaderNameInput").value || "").trim();
-  const bigGroup = $("bigGroupSelect").value || "A";
-  if (!name) return alert("Write your leader/team name first.");
-
-  const id = makeLeaderId(name, bigGroup);
-  localStorage.setItem("leaderName", name);
-  localStorage.setItem("bigGroup", bigGroup);
-
-  groups[id] ||= {
-    name,
-    bigGroup,
-    status: "not started",
-    lastStatusTime: "",
-    active: null,
-    userCreated: true
-  };
-  groups[id].name = name;
-  groups[id].bigGroup = bigGroup;
-  groups[id].userCreated = true;
-
-  selectedGroupId = id;
-  localStorage.setItem("selectedGroupId", id);
-  saveAllGroups(false);
-  showDashboard(id);
+function enterLeaderSafe() {
+  try {
+    var input = $("leaderNameInput");
+    var name = (input && input.value ? input.value : "").trim();
+    var bigSelect = $("bigGroupSelect");
+    var bigGroup = (bigSelect && bigSelect.value) ? bigSelect.value : "A";
+    if (!name) { alert("Write your leader/team name first."); return; }
+    var id = makeLeaderId(name, bigGroup);
+    localStorage.setItem("leaderName", name);
+    localStorage.setItem("bigGroup", bigGroup);
+    if (!groups[id]) groups[id] = { name: name, bigGroup: bigGroup, status: "not started", lastStatusTime: "", active: null, userCreated: true };
+    groups[id].name = name;
+    groups[id].bigGroup = bigGroup;
+    groups[id].userCreated = true;
+    selectedGroupId = id;
+    localStorage.setItem("selectedGroupId", id);
+    saveAllGroups(false);
+    showDashboard(id);
+  } catch (e) {
+    alert("Enter failed: " + e.message);
+    setSyncStatus("Enter error: " + e.message);
+  }
 }
 
 function makeLeaderId(name, bigGroup) {
-  let hash = 0;
-  const raw = `${bigGroup}:${name.trim().toLowerCase()}`;
-  for (let i = 0; i < raw.length; i++) {
+  var hash = 0;
+  var raw = String(bigGroup) + ":" + String(name).trim().toLowerCase();
+  for (var i = 0; i < raw.length; i++) {
     hash = ((hash << 5) - hash) + raw.charCodeAt(i);
-    hash |= 0;
+    hash = hash | 0;
   }
-  return `leader-${bigGroup}-${Math.abs(hash)}`;
-}
-
-async function initStorage() {
-  groups = normalizeGroups(loadLocalGroups());
-
-  if (!firebaseConfig) {
-    setSyncStatus("Offline/local mode");
-    return;
-  }
-
-  try {
-    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-    const { getFirestore, doc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const app = initializeApp(firebaseConfig);
-    db = { firestore: getFirestore(app), doc, setDoc, onSnapshot };
-    setSyncStatus("Connecting to Firebase...");
-
-    const ref = db.doc(db.firestore, "tour", "state");
-    unsubscribe = db.onSnapshot(ref, async (snap) => {
-      setSyncStatus("Online sync enabled");
-      if (snap.exists()) {
-        groups = normalizeGroups(snap.data().groups || groups);
-        saveLocalGroups(groups);
-      } else {
-        await saveAllGroups(false);
-      }
-      if (selectedGroupId) updateCurrentDisplay();
-      checkLiveCapacity();
-      renderOverview();
-    }, (err) => {
-      console.error(err);
-      db = null;
-      setSyncStatus(`Firebase error: ${err.code || err.message}`);
-      alert("Firebase cannot sync. Most likely: Firestore Database was not created, or Firestore rules block read/write.");
-    });
-  } catch (err) {
-    console.error(err);
-    db = null;
-    setSyncStatus(`Firebase error: ${err.code || err.message}`);
-  }
+  if (hash < 0) hash = -hash;
+  return "leader-" + bigGroup + "-" + hash;
 }
 
 function loadLocalGroups() {
-  const saved = localStorage.getItem("tourGroups");
-  if (saved) return JSON.parse(saved);
-  localStorage.setItem("tourGroups", JSON.stringify({}));
+  var saved = localStorage.getItem("tourGroups");
+  if (saved) {
+    try { return JSON.parse(saved); } catch (e) { return {}; }
+  }
   return {};
 }
 
 function normalizeGroups(data) {
-  const merged = { ...(data || {}) };
-  for (const [id, group] of Object.entries(merged)) {
-    group.name ||= id;
-    group.bigGroup ||= id.includes("-B-") ? "B" : "A";
-    group.status ||= "not started";
-    group.lastStatusTime ||= "";
+  var merged = data || {};
+  for (var id in merged) {
+    if (!Object.prototype.hasOwnProperty.call(merged, id)) continue;
+    var group = merged[id] || {};
+    group.name = group.name || id;
+    group.bigGroup = group.bigGroup || (id.indexOf("-B-") >= 0 ? "B" : "A");
+    group.status = group.status || "not started";
+    group.lastStatusTime = group.lastStatusTime || "";
     group.active = normalizeActive(group.active);
+    merged[id] = group;
   }
   return merged;
 }
 
 function normalizeActive(active) {
   if (!active) return null;
-  const station = getStationInfo(active.stationId || active.station || active.stationName);
+  var station = getStationInfo(active.stationId || active.station || active.stationName);
   if (!station) return null;
-  const startMs = Number(active.startMs || active.startedAt || Date.now());
-  const duration = Number(active.duration || active.durationMinutes || 15);
-  return {
-    locationId: station.locationId,
-    locationName: station.locationName,
-    stationId: station.id,
-    stationName: station.name,
-    startMs,
-    duration,
-    endMs: startMs + duration * 60 * 1000
-  };
+  var startMs = Number(active.startMs || active.startedAt || new Date().getTime());
+  var duration = Number(active.duration || active.durationMinutes || 15);
+  return { locationId: station.locationId, locationName: station.locationName, stationId: station.id, stationName: station.name, startMs: startMs, duration: duration, endMs: startMs + duration * 60 * 1000 };
 }
 
 function saveLocalGroups(data) {
   localStorage.setItem("tourGroups", JSON.stringify(data));
 }
 
-async function saveAllGroups(showError = true) {
+function saveAllGroups(showError) {
   saveLocalGroups(groups);
   if (!db) return false;
-
-  try {
-    const ref = db.doc(db.firestore, "tour", "state");
-    await db.setDoc(ref, { groups }, { merge: true });
+  db.collection("tour").doc("state").set({ groups: groups }, { merge: true }).then(function () {
     setSyncStatus("Online sync enabled");
-    return true;
-  } catch (err) {
-    console.error(err);
-    setSyncStatus(`Save failed: ${err.code || err.message}`);
-    if (showError) alert("Saved only on this phone. Firebase save failed. Check Firestore rules/test mode.");
-    return false;
-  }
+  }).catch(function (err) {
+    setSyncStatus("Save failed: " + (err.code || err.message));
+    if (showError !== false) alert("Saved only on this phone. Firebase save failed.");
+  });
+  return true;
 }
 
 function showDashboard(groupId) {
   selectedGroupId = groupId;
   localStorage.setItem("selectedGroupId", groupId);
-  $("setupCard").classList.add("hidden");
-  $("dashboard").classList.remove("hidden");
-  $("groupName").textContent = `${groups[groupId]?.name || groupId} · Big Group ${groups[groupId]?.bigGroup || ""}`;
+  if ($("setupCard")) $("setupCard").classList.add("hidden");
+  if ($("dashboard")) $("dashboard").classList.remove("hidden");
+  if ($("groupName")) $("groupName").textContent = (groups[groupId].name || groupId) + " · Big Group " + (groups[groupId].bigGroup || "");
   updateCurrentDisplay();
-  checkLiveCapacity();
-  renderOverview();
+  checkLiveCapacitySafe();
+  renderOverviewSafe();
   if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
-    updateCurrentDisplay();
-    renderOverview();
-  }, 1000);
+  timerInterval = setInterval(function () { updateCurrentDisplay(); renderOverviewSafe(); }, 1000);
 }
 
-async function startNow() {
-  if (!selectedGroupId || !groups[selectedGroupId]) return alert("Enter your name first.");
-  const station = getStationInfo($("stationSelect").value);
-  const duration = Number($("durationInput").value || 15);
-  if (!station) return alert("Choose a station first.");
+function changeLeaderSafe() {
+  selectedGroupId = null;
+  localStorage.removeItem("selectedGroupId");
+  if ($("setupCard")) $("setupCard").classList.remove("hidden");
+  if ($("dashboard")) $("dashboard").classList.add("hidden");
+}
 
-  const activeGroups = getActiveGroupsAtStation(station.id).filter(item => item.id !== selectedGroupId);
-  if (station.capacity !== Infinity && activeGroups.length >= station.capacity) {
-    const names = activeGroups.map(item => item.group.name).join(", ");
-    const ok = confirm(`${station.name} is already full.\nCurrently there: ${names}\n\nStart anyway?`);
-    if (!ok) return;
+function startNowSafe() {
+  if (!selectedGroupId || !groups[selectedGroupId]) { alert("Enter your name first."); return; }
+  var station = getStationInfo($("stationSelect") ? $("stationSelect").value : "");
+  var duration = Number($("durationInput") ? $("durationInput").value : 15) || 15;
+  if (!station) { alert("Choose a station first."); return; }
+  var activeGroups = getActiveGroupsAtStation(station.id).filter(function (item) { return item.id !== selectedGroupId; });
+  if (station.capacity < 9999 && activeGroups.length >= station.capacity) {
+    var names = activeGroups.map(function (item) { return item.group.name; }).join(", ");
+    if (!confirm(station.name + " is already full.\nCurrently there: " + names + "\n\nStart anyway?")) return;
   }
-
-  const startMs = Date.now();
-  groups[selectedGroupId].active = {
-    locationId: station.locationId,
-    locationName: station.locationName,
-    stationId: station.id,
-    stationName: station.name,
-    startMs,
-    duration,
-    endMs: startMs + duration * 60 * 1000
-  };
+  var startMs = new Date().getTime();
+  groups[selectedGroupId].active = { locationId: station.locationId, locationName: station.locationName, stationId: station.id, stationName: station.name, startMs: startMs, duration: duration, endMs: startMs + duration * 60 * 1000 };
   groups[selectedGroupId].status = "active";
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  const synced = await saveAllGroups();
+  var synced = saveAllGroups();
   updateCurrentDisplay();
-  renderOverview();
+  renderOverviewSafe();
   alert(synced ? "Started and synced." : "Started only on this phone.");
 }
 
-async function finishStation() {
+function finishStationSafe() {
   if (!groups[selectedGroupId]) return;
   groups[selectedGroupId].active = null;
   groups[selectedGroupId].status = "finished early";
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const synced = await saveAllGroups();
+  var synced = saveAllGroups();
   updateCurrentDisplay();
-  renderOverview();
+  renderOverviewSafe();
   alert(synced ? "Finished and synced." : "Finished only on this phone.");
 }
 
-async function setStatus(status) {
-  if (!groups[selectedGroupId]) return alert("Enter your name first.");
+function setStatusSafe(status) {
+  if (!groups[selectedGroupId]) { alert("Enter your name first."); return; }
   groups[selectedGroupId].status = status;
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const synced = await saveAllGroups();
-  $("lastStatus").textContent = synced ? `Status sent: ${status}` : `Status saved locally only: ${status}`;
-  renderOverview();
+  var synced = saveAllGroups();
+  if ($("lastStatus")) $("lastStatus").textContent = synced ? "Status sent: " + status : "Status saved locally only: " + status;
+  renderOverviewSafe();
 }
 
 function updateCurrentDisplay() {
-  const group = groups[selectedGroupId];
-  const active = group?.active;
-
+  if (!selectedGroupId || !groups[selectedGroupId]) return;
+  var active = groups[selectedGroupId].active;
   if (!active) {
     $("currentStation").textContent = "Not started";
     $("timeLeft").textContent = "--:--";
@@ -332,133 +303,123 @@ function updateCurrentDisplay() {
     $("nextStation").textContent = "Location: -";
     return;
   }
-
-  const left = Math.max(0, Math.round((active.endMs - Date.now()) / 1000));
+  var left = Math.max(0, Math.round((active.endMs - new Date().getTime()) / 1000));
   $("currentStation").textContent = active.stationName;
   $("timeLeft").textContent = formatSeconds(left);
-  $("currentWindow").textContent = `${active.duration} minutes · started ${new Date(active.startMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-  $("nextStation").textContent = `Location: ${active.locationName}`;
-
-  if (left === 0) {
-    $("timeLeft").classList.add("alertDone");
-    maybeNotify("Station time finished", "Press Finish or choose the next station.");
-  } else {
-    $("timeLeft").classList.remove("alertDone");
-  }
+  $("currentWindow").textContent = active.duration + " minutes · started " + new Date(active.startMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("nextStation").textContent = "Location: " + active.locationName;
+  if (left === 0) { $("timeLeft").classList.add("alertDone"); maybeNotify("Station time finished", "Press Finish or choose the next station."); }
+  else { $("timeLeft").classList.remove("alertDone"); }
 }
 
-function checkLiveCapacity() {
-  const warning = $("capacityWarning");
+function checkLiveCapacitySafe() {
+  var warning = $("capacityWarning");
   if (!warning) return;
-  const station = getStationInfo($("stationSelect")?.value);
+  var station = getStationInfo($("stationSelect") ? $("stationSelect").value : "");
   warning.classList.add("hidden");
   warning.textContent = "";
-  if (!station || station.capacity === Infinity) return;
-
-  const activeGroups = getActiveGroupsAtStation(station.id).filter(item => item.id !== selectedGroupId);
+  if (!station || station.capacity >= 9999) return;
+  var activeGroups = getActiveGroupsAtStation(station.id).filter(function (item) { return item.id !== selectedGroupId; });
   if (activeGroups.length >= station.capacity) {
     warning.classList.remove("hidden");
-    warning.textContent = `Full now: ${activeGroups.map(item => item.group.name).join(", ")} already at this station.`;
+    warning.textContent = "Full now: " + activeGroups.map(function (item) { return item.group.name; }).join(", ") + " already at this station.";
   } else if (activeGroups.length > 0) {
     warning.classList.remove("hidden");
-    warning.textContent = `Currently there: ${activeGroups.map(item => item.group.name).join(", ")}. Capacity: ${station.capacity}.`;
+    warning.textContent = "Currently there: " + activeGroups.map(function (item) { return item.group.name; }).join(", ") + ". Capacity: " + station.capacity + ".";
   }
 }
 
-function renderOverview() {
-  const byStation = {};
-  for (const station of ALL_STATIONS) byStation[station.id] = [];
-  const idleList = [];
-
-  for (const [id, group] of Object.entries(groups)) {
-    const active = group.active;
-    if (!active) {
-      idleList.push({ id, group });
-      continue;
+function renderOverviewSafe() {
+  var container = $("stationsOverview");
+  if (!container) return;
+  var byStation = {};
+  for (var i = 0; i < ALL_STATIONS.length; i++) byStation[ALL_STATIONS[i].id] = [];
+  var idleList = [];
+  for (var id in groups) {
+    if (!Object.prototype.hasOwnProperty.call(groups, id)) continue;
+    var group = groups[id];
+    if (!group.active) idleList.push({ id: id, group: group });
+    else {
+      if (!byStation[group.active.stationId]) byStation[group.active.stationId] = [];
+      byStation[group.active.stationId].push({ id: id, group: group });
     }
-    byStation[active.stationId] ||= [];
-    byStation[active.stationId].push({ id, group });
   }
-
-  const container = $("stationsOverview");
   container.innerHTML = "";
-
-  LOCATIONS.forEach(location => {
-    const heading = document.createElement("h3");
-    heading.textContent = location.name;
+  for (var l = 0; l < LOCATIONS.length; l++) {
+    var heading = document.createElement("h3");
+    heading.textContent = LOCATIONS[l].name;
     heading.dir = "rtl";
     container.appendChild(heading);
-
-    location.stations.forEach(station => {
-      const list = byStation[station.id] || [];
-      const isOver = station.capacity !== Infinity && list.length > station.capacity;
-      const limitText = station.capacity === Infinity ? "no limit" : `limit ${station.capacity}`;
-      const box = document.createElement("div");
+    for (var st = 0; st < LOCATIONS[l].stations.length; st++) {
+      var station = LOCATIONS[l].stations[st];
+      var list = byStation[station.id] || [];
+      var isOver = station.capacity < 9999 && list.length > station.capacity;
+      var limitText = station.capacity >= 9999 ? "no limit" : "limit " + station.capacity;
+      var box = document.createElement("div");
       box.className = "stationBox" + (isOver ? " over" : "");
-      box.innerHTML = `<div class="stationTitle"><span dir="rtl">${escapeHtml(station.name)}</span><span>${list.length} leaders · ${limitText}</span></div>`;
-      list.forEach(({ group }) => {
-        const pill = document.createElement("span");
-        const status = group.status || "active";
-        const left = group.active ? Math.max(0, Math.round((group.active.endMs - Date.now()) / 1000)) : 0;
+      box.innerHTML = '<div class="stationTitle"><span dir="rtl">' + escapeHtml(station.name) + '</span><span>' + list.length + ' leaders · ' + limitText + '</span></div>';
+      for (var p = 0; p < list.length; p++) {
+        var pill = document.createElement("span");
+        var g = list[p].group;
+        var status = g.status || "active";
+        var left = g.active ? Math.max(0, Math.round((g.active.endMs - new Date().getTime()) / 1000)) : 0;
         pill.className = "groupPill" + (status === "waiting" ? " waiting" : status === "delayed" ? " delayed" : status === "finished early" ? " good" : "");
-        pill.textContent = `${group.name} (${group.bigGroup || ""}) - ${status} - ${formatSeconds(left)}`;
+        pill.textContent = g.name + " (" + (g.bigGroup || "") + ") - " + status + " - " + formatSeconds(left);
         box.appendChild(pill);
-      });
+      }
       container.appendChild(box);
-    });
-  });
-
-  const idleBox = document.createElement("div");
+    }
+  }
+  var idleBox = document.createElement("div");
   idleBox.className = "stationBox";
-  idleBox.innerHTML = `<div class="stationTitle"><span>Not started / finished</span><span>${idleList.length} leaders</span></div>`;
-  idleList.forEach(({ group }) => {
-    const pill = document.createElement("span");
-    pill.className = "groupPill";
-    pill.textContent = `${group.name} (${group.bigGroup || ""}) - ${group.status || "not started"}`;
-    idleBox.appendChild(pill);
-  });
+  idleBox.innerHTML = '<div class="stationTitle"><span>Not started / finished</span><span>' + idleList.length + ' leaders</span></div>';
+  for (var k = 0; k < idleList.length; k++) {
+    var ipill = document.createElement("span");
+    ipill.className = "groupPill";
+    ipill.textContent = idleList[k].group.name + " (" + (idleList[k].group.bigGroup || "") + ") - " + (idleList[k].group.status || "not started");
+    idleBox.appendChild(ipill);
+  }
   container.appendChild(idleBox);
 }
 
 function getActiveGroupsAtStation(stationId) {
-  return Object.entries(groups)
-    .filter(([, group]) => group.active?.stationId === stationId)
-    .map(([id, group]) => ({ id, group }));
+  var arr = [];
+  for (var id in groups) {
+    if (Object.prototype.hasOwnProperty.call(groups, id) && groups[id].active && groups[id].active.stationId === stationId) arr.push({ id: id, group: groups[id] });
+  }
+  return arr;
 }
 
 function getStationInfo(value) {
   if (!value) return null;
-  const oldGrassTypo = "ספסלים בחוץ, אפשר לשבת על הדשה";
-  const normalized = value === oldGrassTypo ? "ספסלים בחוץ, אפשר לשבת על הדשא" : value;
-  return ALL_STATIONS.find(station => station.id === normalized || station.name === normalized) || null;
+  var normalized = value === "ספסלים בחוץ, אפשר לשבת על הדשה" ? "ספסלים בחוץ, אפשר לשבת על הדשא" : value;
+  for (var i = 0; i < ALL_STATIONS.length; i++) {
+    if (ALL_STATIONS[i].id === normalized || ALL_STATIONS[i].name === normalized) return ALL_STATIONS[i];
+  }
+  return null;
 }
 
 function formatSeconds(sec) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  var m = Math.floor(sec / 60);
+  var s = sec % 60;
+  return (m < 10 ? "0" + m : String(m)) + ":" + (s < 10 ? "0" + s : String(s));
 }
 
-async function requestNotifications() {
-  if (!("Notification" in window)) {
-    alert("Notifications are not supported on this phone/browser.");
-    return;
-  }
-  const permission = await Notification.requestPermission();
-  alert(permission === "granted" ? "Alerts enabled." : "Alerts were not allowed.");
+function requestNotificationsSafe() {
+  if (!("Notification" in window)) { alert("Notifications are not supported on this phone/browser."); return; }
+  Notification.requestPermission().then(function (permission) { alert(permission === "granted" ? "Alerts enabled." : "Alerts were not allowed."); });
 }
 
-let lastNotificationMinute = "";
 function maybeNotify(title, body) {
-  const key = new Date().toISOString().slice(0, 16);
+  var key = new Date().toISOString().slice(0, 16);
   if (lastNotificationMinute === key) return;
   lastNotificationMinute = key;
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(title, { body });
-  }
+  if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body: body });
   if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
 }
 
 function escapeHtml(str) {
-  return String(str).replace(/[&<>\"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(str).replace(/[&<>\"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
 }
+
+boot();
