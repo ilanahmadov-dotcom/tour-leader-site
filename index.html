@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Tour Leader</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Tour Leader</h1>
+      <p id="syncStatus">Offline/local mode</p>
+    </div>
+    <button id="notifyBtn" class="smallBtn">Enable alerts</button>
+  </header>
+
+  <main>
+    <section id="setupCard" class="card">
+      <h2>Choose your group</h2>
+      <label for="groupSelect">Group number</label>
+      <select id="groupSelect"></select>
+      <button id="enterBtn" class="primary">Enter</button>
+      <p class="hint">Each leader chooses their group. Everyone can see the station overview.</p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="hero card">
+        <div class="row between">
+          <div>
+            <p class="eyebrow" id="groupName">Group</p>
+            <h2 id="currentStation">No route yet</h2>
+          </div>
+          <button id="changeGroupBtn" class="ghost">Change</button>
+        </div>
+        <div class="timer" id="timeLeft">--:--</div>
+        <p id="currentWindow" class="muted">Add your route below.</p>
+        <p id="nextStation" class="next">Next: -</p>
+      </div>
+
+      <section class="card actions">
+        <h2>Quick status</h2>
+        <div class="grid2">
+          <button data-status="active" class="statusBtn">At station</button>
+          <button data-status="waiting" class="statusBtn warn">Waiting</button>
+          <button data-status="finished early" class="statusBtn good">Finished early</button>
+          <button data-status="delayed" class="statusBtn danger">Delayed</button>
+        </div>
+        <p id="lastStatus" class="hint">No status sent yet.</p>
+      </section>
+
+      <section class="card">
+        <div class="row between center">
+          <h2>My route</h2>
+          <button id="addStopBtn" class="smallBtn">+ Add station</button>
+        </div>
+        <div id="routeList"></div>
+        <button id="saveRouteBtn" class="primary">Save route</button>
+        <p class="hint">Use 24-hour time, for example 09:00. Duration is minutes.</p>
+      </section>
+
+      <section class="card">
+        <div class="row between center">
+          <h2>Stations overview</h2>
+          <button id="refreshBtn" class="smallBtn">Refresh</button>
+        </div>
+        <div id="stationsOverview"></div>
+      </section>
+    </section>
+  </main>
+
+  <template id="stopTemplate">
+    <div class="stop">
+      <label>Station name
+        <input class="stationInput" placeholder="Station 1" />
+      </label>
+      <div class="grid2">
+        <label>Start time
+          <input class="startInput" type="time" />
+        </label>
+        <label>Minutes
+          <input class="durationInput" type="number" min="1" max="180" value="15" />
+        </label>
+      </div>
+      <button class="removeStop ghost" type="button">Remove</button>
+    </div>
+  </template>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
