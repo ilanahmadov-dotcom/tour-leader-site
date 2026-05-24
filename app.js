@@ -49,6 +49,7 @@ const $ = (id) => document.getElementById(id);
 init();
 
 async function init() {
+  setSyncStatus("Loading...");
   fillLocationSelect();
   restoreLeaderInputs();
   wireButtons();
@@ -146,8 +147,13 @@ function enterLeader() {
 }
 
 function makeLeaderId(name, bigGroup) {
-  const safe = name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}-]/gu, "").slice(0, 40) || "leader";
-  return `leader-${bigGroup}-${safe}`;
+  let hash = 0;
+  const raw = `${bigGroup}:${name.trim().toLowerCase()}`;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+    hash |= 0;
+  }
+  return `leader-${bigGroup}-${Math.abs(hash)}`;
 }
 
 async function initStorage() {
