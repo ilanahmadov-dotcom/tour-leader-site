@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
   <title>Tour Leader</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=classicfix2" />
 </head>
 <body>
   <header class="topbar">
@@ -82,6 +82,14 @@
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script>
+    setTimeout(function () {
+      var s = document.getElementById('syncStatus');
+      if (s && s.textContent === 'Loading...') {
+        s.textContent = 'Script did not load - refresh / open in Chrome';
+      }
+    }, 4000);
+  </script>
+  <script src="app.js?v=classicfix2"></script>
 </body>
 </html>
