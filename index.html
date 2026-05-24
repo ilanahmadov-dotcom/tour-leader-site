@@ -18,18 +18,23 @@
 
   <main>
     <section id="setupCard" class="card">
-      <h2>Choose your group</h2>
-      <label for="groupSelect">Group number</label>
-      <select id="groupSelect"></select>
+      <h2>Enter as leader</h2>
+      <label for="leaderNameInput">Leader / team name</label>
+      <input id="leaderNameInput" placeholder="Example: Ilan / מפקד א1" />
+      <label for="bigGroupSelect">Big group</label>
+      <select id="bigGroupSelect">
+        <option value="A">Big Group A</option>
+        <option value="B">Big Group B</option>
+      </select>
       <button id="enterBtn" class="primary">Enter</button>
-      <p class="hint">Groups 1–8 are Big Group A. Groups 9–20 are Big Group B.</p>
+      <p class="hint">Use a unique name. If two leaders use the exact same name and big group, they will control the same entry.</p>
     </section>
 
     <section id="dashboard" class="hidden">
       <div class="hero card">
         <div class="row between">
           <div>
-            <p class="eyebrow" id="groupName">Group</p>
+            <p class="eyebrow" id="groupName">Leader</p>
             <h2 id="currentStation">Not started</h2>
           </div>
           <button id="changeGroupBtn" class="ghost">Change</button>
@@ -53,7 +58,7 @@
         <p id="capacityWarning" class="conflictText hidden"></p>
         <button id="startNowBtn" class="primary">Start now</button>
         <button id="finishBtn" class="ghost">Finish / leave station</button>
-        <p class="hint">The timer starts from the moment you press Start now. The site checks only active groups right now.</p>
+        <p class="hint">The timer starts from the moment you press Start now. The site checks only active leaders right now.</p>
       </section>
 
       <section class="card actions">
