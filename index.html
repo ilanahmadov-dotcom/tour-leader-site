@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
   <title>Tour Leader</title>
-  <link rel="stylesheet" href="style.css?v=classicfix2" />
+  <link rel="stylesheet" href="style.css?v=waitflow1" />
 </head>
 <body>
   <header class="topbar">
@@ -45,31 +45,35 @@
       </div>
 
       <section class="card">
-        <h2>Start my station</h2>
+        <h2>Station control</h2>
         <label>Location
           <select id="locationSelect" onchange="fillStationSelectSafe()"></select>
         </label>
-        <label>Station
+        <label>Station / station I am waiting for
           <select id="stationSelect" class="stationInput" onchange="checkLiveCapacitySafe()"></select>
         </label>
         <label>Minutes
           <input id="durationInput" type="number" min="1" max="180" value="15" oninput="checkLiveCapacitySafe()" />
         </label>
         <p id="capacityWarning" class="conflictText hidden"></p>
-        <button id="startNowBtn" class="primary" onclick="startNowSafe()">Start now</button>
+        <button id="startNowBtn" class="primary" onclick="startNowSafe()">Start now / I am at this station</button>
+        <button id="waitingBtn" class="warning" onclick="waitingForStationSafe()">I am waiting for this station</button>
         <button id="finishBtn" class="ghost" onclick="finishStationSafe()">Finish / leave station</button>
-        <p class="hint">The timer starts from the moment you press Start now. The site checks only active leaders right now.</p>
+        <p class="hint">Waiting pings the leaders currently inside the selected station. Delayed pings leaders waiting for your current station.</p>
       </section>
 
       <section class="card actions">
-        <h2>Quick status</h2>
+        <h2>Delay / response</h2>
         <div class="grid2">
-          <button onclick="setStatusSafe('active')" class="statusBtn">At station</button>
-          <button onclick="setStatusSafe('waiting')" class="statusBtn warn">Waiting</button>
-          <button onclick="setStatusSafe('finished early')" class="statusBtn good">Finished early</button>
-          <button onclick="setStatusSafe('delayed')" class="statusBtn danger">Delayed</button>
+          <button onclick="delayedHereSafe()" class="statusBtn danger">Delayed at my station</button>
+          <button onclick="generalDelayedSafe()" class="statusBtn warn">General delay</button>
         </div>
         <p id="lastStatus" class="hint">No status sent yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Messages for me</h2>
+        <div id="messagesBox" class="list"></div>
       </section>
 
       <section class="card">
@@ -90,6 +94,6 @@
       }
     }, 4000);
   </script>
-  <script src="app.js?v=classicfix2"></script>
+  <script src="app.js?v=waitflow1"></script>
 </body>
 </html>
