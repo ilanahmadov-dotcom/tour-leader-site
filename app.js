@@ -2,7 +2,15 @@
 // The site works in local mode immediately.
 // To make all phones sync, create Firebase project and paste your config below.
 // Replace null with your Firebase config object.
-const firebaseConfig = null;
+const firebaseConfig = {
+  apiKey: "AIzaSyDfzyKcnRFl22bv7AZcAMMMpZ54FgKavo8",
+  authDomain: "tour-leader-site.firebaseapp.com",
+  projectId: "tour-leader-site",
+  storageBucket: "tour-leader-site.firebasestorage.app",
+  messagingSenderId: "759437911729",
+  appId: "1:759437911729:web:f5b9e086d35ae66e772490",
+  measurementId: "G-EHPXM4M8TC"
+};
 
 let db = null;
 let selectedGroupId = localStorage.getItem("selectedGroupId") || null;
