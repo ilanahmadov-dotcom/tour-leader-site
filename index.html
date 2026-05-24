@@ -13,7 +13,7 @@
       <h1>Tour Leader</h1>
       <p id="syncStatus">Loading...</p>
     </div>
-    <button id="notifyBtn" class="smallBtn">Enable alerts</button>
+    <button id="notifyBtn" class="smallBtn" onclick="requestNotificationsSafe()">Enable alerts</button>
   </header>
 
   <main>
@@ -26,7 +26,7 @@
         <option value="A">Big Group A</option>
         <option value="B">Big Group B</option>
       </select>
-      <button id="enterBtn" class="primary">Enter</button>
+      <button id="enterBtn" class="primary" onclick="enterLeaderSafe()">Enter</button>
       <p class="hint">Use a unique name. If two leaders use the exact same name and big group, they will control the same entry.</p>
     </section>
 
@@ -37,7 +37,7 @@
             <p class="eyebrow" id="groupName">Leader</p>
             <h2 id="currentStation">Not started</h2>
           </div>
-          <button id="changeGroupBtn" class="ghost">Change</button>
+          <button id="changeGroupBtn" class="ghost" onclick="changeLeaderSafe()">Change</button>
         </div>
         <div class="timer" id="timeLeft">--:--</div>
         <p id="currentWindow" class="muted">Choose a station and press Start now.</p>
@@ -47,27 +47,27 @@
       <section class="card">
         <h2>Start my station</h2>
         <label>Location
-          <select id="locationSelect"></select>
+          <select id="locationSelect" onchange="fillStationSelectSafe()"></select>
         </label>
         <label>Station
-          <select id="stationSelect" class="stationInput"></select>
+          <select id="stationSelect" class="stationInput" onchange="checkLiveCapacitySafe()"></select>
         </label>
         <label>Minutes
-          <input id="durationInput" type="number" min="1" max="180" value="15" />
+          <input id="durationInput" type="number" min="1" max="180" value="15" oninput="checkLiveCapacitySafe()" />
         </label>
         <p id="capacityWarning" class="conflictText hidden"></p>
-        <button id="startNowBtn" class="primary">Start now</button>
-        <button id="finishBtn" class="ghost">Finish / leave station</button>
+        <button id="startNowBtn" class="primary" onclick="startNowSafe()">Start now</button>
+        <button id="finishBtn" class="ghost" onclick="finishStationSafe()">Finish / leave station</button>
         <p class="hint">The timer starts from the moment you press Start now. The site checks only active leaders right now.</p>
       </section>
 
       <section class="card actions">
         <h2>Quick status</h2>
         <div class="grid2">
-          <button data-status="active" class="statusBtn">At station</button>
-          <button data-status="waiting" class="statusBtn warn">Waiting</button>
-          <button data-status="finished early" class="statusBtn good">Finished early</button>
-          <button data-status="delayed" class="statusBtn danger">Delayed</button>
+          <button onclick="setStatusSafe('active')" class="statusBtn">At station</button>
+          <button onclick="setStatusSafe('waiting')" class="statusBtn warn">Waiting</button>
+          <button onclick="setStatusSafe('finished early')" class="statusBtn good">Finished early</button>
+          <button onclick="setStatusSafe('delayed')" class="statusBtn danger">Delayed</button>
         </div>
         <p id="lastStatus" class="hint">No status sent yet.</p>
       </section>
@@ -75,13 +75,13 @@
       <section class="card">
         <div class="row between center">
           <h2>Live station overview</h2>
-          <button id="refreshBtn" class="smallBtn">Refresh</button>
+          <button id="refreshBtn" class="smallBtn" onclick="renderOverviewSafe()">Refresh</button>
         </div>
         <div id="stationsOverview"></div>
       </section>
     </section>
   </main>
 
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
