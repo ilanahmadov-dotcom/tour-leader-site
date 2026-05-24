@@ -20,7 +20,7 @@ const STATIONS = [
   { id: "station5", name: "מפה טופוגרפית", capacity: 1 },
   { id: "station6", name: "סרטון מנהיגות", capacity: 1 },
   { id: "station7", name: "בן גוריון במבחן הזמן", capacity: 1 },
-  { id: "station8", name: "ספסלים בחוץ, אפשר לשבת על הדשה", capacity: Infinity }
+  { id: "station8", name: "ספסלים בחוץ, אפשר לשבת על הדשא", capacity: Infinity }
 ];
 
 let db = null;
