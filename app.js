@@ -1,7 +1,6 @@
 // SIMPLE SETUP:
 // The site works in local mode immediately.
 // To make all phones sync, create Firebase project and paste your config below.
-// Replace null with your Firebase config object.
 const firebaseConfig = {
   apiKey: "AIzaSyDfzyKcnRFl22bv7AZcAMMMpZ54FgKavo8",
   authDomain: "tour-leader-site.firebaseapp.com",
@@ -12,16 +11,32 @@ const firebaseConfig = {
   measurementId: "G-EHPXM4M8TC"
 };
 
-const STATIONS = [
-  { id: "station1", name: "מייצג אנימציה, בן גוריון מארח, ביתן 1", capacity: 1 },
-  { id: "station2", name: "מייצג אנימציה, בן גוריון מארח, ביתן 2", capacity: 1 },
-  { id: "station3", name: "הבית של בן גוריון", capacity: 1 },
-  { id: "station4", name: "בית הגבס", capacity: 1 },
-  { id: "station5", name: "מפה טופוגרפית", capacity: 1 },
-  { id: "station6", name: "סרטון מנהיגות", capacity: 1 },
-  { id: "station7", name: "בן גוריון במבחן הזמן", capacity: 1 },
-  { id: "station8", name: "ספסלים בחוץ, אפשר לשבת על הדשא", capacity: Infinity }
+const LOCATIONS = [
+  {
+    id: "tzrif",
+    name: "צריף בן גוריון",
+    stations: [
+      { id: "tzrif1", name: "מייצג אנימציה, בן גוריון מארח, ביתן 1", capacity: 1 },
+      { id: "tzrif2", name: "מייצג אנימציה, בן גוריון מארח, ביתן 2", capacity: 1 },
+      { id: "tzrif3", name: "הבית של בן גוריון", capacity: 1 },
+      { id: "tzrif4", name: "בית הגבס", capacity: 1 },
+      { id: "tzrif5", name: "מפה טופוגרפית", capacity: 1 },
+      { id: "tzrif6", name: "סרטון מנהיגות", capacity: 1 },
+      { id: "tzrif7", name: "בן גוריון במבחן הזמן", capacity: 1 },
+      { id: "tzrif8", name: "ספסלים בחוץ, אפשר לשבת על הדשא", capacity: Infinity }
+    ]
+  },
+  {
+    id: "kever",
+    name: "קבר בן גוריון",
+    stations: [
+      { id: "kever1", name: "הקבר", capacity: 2 },
+      { id: "kever2", name: "הדשא", capacity: Infinity }
+    ]
+  }
 ];
+
+const ALL_STATIONS = LOCATIONS.flatMap(location => location.stations.map(station => ({ ...station, locationId: location.id, locationName: location.name })));
 
 let db = null;
 let selectedGroupId = localStorage.getItem("selectedGroupId") || null;
@@ -33,9 +48,10 @@ const DEFAULT_GROUPS = Array.from({ length: 20 }, (_, i) => {
   const id = `group${i + 1}`;
   return [id, {
     name: `Group ${i + 1}`,
-    status: "active",
+    bigGroup: i < 8 ? "A" : "B",
+    status: "not started",
     lastStatusTime: "",
-    route: []
+    active: null
   }];
 });
 
@@ -45,6 +61,7 @@ init();
 
 async function init() {
   fillGroupSelect();
+  fillLocationSelect();
   wireButtons();
   await initStorage();
 
@@ -59,13 +76,42 @@ function setSyncStatus(text) {
 
 function fillGroupSelect() {
   const select = $("groupSelect");
+  select.innerHTML = "";
   for (let i = 1; i <= 20; i++) {
     const opt = document.createElement("option");
     opt.value = `group${i}`;
-    opt.textContent = `Group ${i}`;
+    opt.textContent = `Group ${i} (${i <= 8 ? "A" : "B"})`;
     select.appendChild(opt);
   }
   if (selectedGroupId) select.value = selectedGroupId;
+}
+
+function fillLocationSelect() {
+  const select = $("locationSelect");
+  if (!select) return;
+  select.innerHTML = "";
+  LOCATIONS.forEach(location => {
+    const opt = document.createElement("option");
+    opt.value = location.id;
+    opt.textContent = location.name;
+    select.appendChild(opt);
+  });
+  fillStationSelect();
+}
+
+function fillStationSelect() {
+  const locationId = $("locationSelect")?.value || LOCATIONS[0].id;
+  const stationSelect = $("stationSelect");
+  if (!stationSelect) return;
+  stationSelect.innerHTML = "";
+  const location = LOCATIONS.find(l => l.id === locationId) || LOCATIONS[0];
+  location.stations.forEach(station => {
+    const opt = document.createElement("option");
+    opt.value = station.id;
+    opt.textContent = station.name;
+    stationSelect.appendChild(opt);
+  });
+  checkLiveCapacity();
 }
 
 function wireButtons() {
@@ -76,8 +122,11 @@ function wireButtons() {
     $("setupCard").classList.remove("hidden");
     $("dashboard").classList.add("hidden");
   });
-  $("addStopBtn").addEventListener("click", () => addStopRow());
-  $("saveRouteBtn").addEventListener("click", saveRouteFromUI);
+  $("locationSelect").addEventListener("change", fillStationSelect);
+  $("stationSelect").addEventListener("change", checkLiveCapacity);
+  $("durationInput").addEventListener("input", checkLiveCapacity);
+  $("startNowBtn").addEventListener("click", startNow);
+  $("finishBtn").addEventListener("click", finishStation);
   $("refreshBtn").addEventListener("click", renderOverview);
   $("notifyBtn").addEventListener("click", requestNotifications);
   document.querySelectorAll(".statusBtn").forEach(btn => {
@@ -109,10 +158,8 @@ async function initStorage() {
       } else {
         await saveAllGroups(false);
       }
-      if (selectedGroupId) {
-        loadRouteIntoUI();
-        updateCurrentDisplay();
-      }
+      if (selectedGroupId) updateCurrentDisplay();
+      checkLiveCapacity();
       renderOverview();
     }, (err) => {
       console.error(err);
@@ -138,24 +185,32 @@ function loadLocalGroups() {
 function normalizeGroups(data) {
   const base = Object.fromEntries(DEFAULT_GROUPS);
   const merged = { ...base, ...(data || {}) };
-  for (const group of Object.values(merged)) {
-    group.route = (group.route || []).map(stop => ({
-      station: normalizeStation(stop.station),
-      start: stop.start || "",
-      duration: Number(stop.duration || 15)
-    })).filter(stop => stop.station && stop.start);
+  for (let i = 1; i <= 20; i++) {
+    const id = `group${i}`;
+    merged[id] ||= base[id];
+    merged[id].name ||= `Group ${i}`;
+    merged[id].bigGroup ||= i <= 8 ? "A" : "B";
+    merged[id].status ||= "not started";
+    merged[id].active = normalizeActive(merged[id].active);
   }
   return merged;
 }
 
-function normalizeStation(value) {
-  if (!value) return "";
-  const found = STATIONS.find(s => s.id === value || s.name === value);
-  return found ? found.name : value;
-}
-
-function getStationInfo(name) {
-  return STATIONS.find(s => s.name === name || s.id === name) || { id: name, name, capacity: 1 };
+function normalizeActive(active) {
+  if (!active) return null;
+  const station = getStationInfo(active.stationId || active.station || active.stationName);
+  if (!station) return null;
+  const startMs = Number(active.startMs || active.startedAt || Date.now());
+  const duration = Number(active.duration || active.durationMinutes || 15);
+  return {
+    locationId: station.locationId,
+    locationName: station.locationName,
+    stationId: station.id,
+    stationName: station.name,
+    startMs,
+    duration,
+    endMs: startMs + duration * 60 * 1000
+  };
 }
 
 function saveLocalGroups(data) {
@@ -184,83 +239,62 @@ function showDashboard(groupId) {
   localStorage.setItem("selectedGroupId", groupId);
   $("setupCard").classList.add("hidden");
   $("dashboard").classList.remove("hidden");
-  $("groupName").textContent = groups[groupId]?.name || groupId;
-  loadRouteIntoUI();
+  $("groupName").textContent = `${groups[groupId]?.name || groupId} · Big Group ${groups[groupId]?.bigGroup || ""}`;
   updateCurrentDisplay();
+  checkLiveCapacity();
   renderOverview();
   if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(updateCurrentDisplay, 1000);
+  timerInterval = setInterval(() => {
+    updateCurrentDisplay();
+    renderOverview();
+  }, 1000);
 }
 
-function addStopRow(stop = {}) {
-  const tpl = $("stopTemplate").content.cloneNode(true);
-  const el = tpl.querySelector(".stop");
-  const stationSelect = el.querySelector(".stationInput");
+async function startNow() {
+  const station = getStationInfo($("stationSelect").value);
+  const duration = Number($("durationInput").value || 15);
+  if (!station) return alert("Choose a station first.");
 
-  STATIONS.forEach(station => {
-    const opt = document.createElement("option");
-    opt.value = station.name;
-    opt.textContent = station.name;
-    stationSelect.appendChild(opt);
-  });
-
-  stationSelect.value = normalizeStation(stop.station) || STATIONS[0].name;
-  el.querySelector(".startInput").value = stop.start || "";
-  el.querySelector(".durationInput").value = stop.duration || 15;
-  el.querySelector(".removeStop").addEventListener("click", () => {
-    el.remove();
-    checkRouteConflicts();
-  });
-
-  stationSelect.addEventListener("change", checkRouteConflicts);
-  el.querySelector(".startInput").addEventListener("input", checkRouteConflicts);
-  el.querySelector(".durationInput").addEventListener("input", checkRouteConflicts);
-
-  $("routeList").appendChild(el);
-  checkRouteConflicts();
-}
-
-function loadRouteIntoUI() {
-  $("routeList").innerHTML = "";
-  const route = groups[selectedGroupId]?.route || [];
-  if (!route.length) {
-    addStopRow({ station: STATIONS[0].name, start: "09:00", duration: 15 });
-    addStopRow({ station: STATIONS[1].name, start: "09:20", duration: 15 });
-    return;
-  }
-  route.forEach(addStopRow);
-  checkRouteConflicts();
-}
-
-function getStopsFromUI() {
-  return [...document.querySelectorAll(".stop")].map(stop => ({
-    station: stop.querySelector(".stationInput").value.trim(),
-    start: stop.querySelector(".startInput").value,
-    duration: Number(stop.querySelector(".durationInput").value || 15)
-  })).filter(s => s.station && s.start);
-}
-
-async function saveRouteFromUI() {
-  const stops = getStopsFromUI();
-  const conflicts = findRouteConflicts(stops, selectedGroupId);
-  const hardConflicts = conflicts.filter(c => !c.unlimited);
-
-  if (hardConflicts.length) {
-    const text = hardConflicts.slice(0, 4).map(c => `${c.station}: ${c.start}-${c.end} with ${c.otherGroup}`).join("\n");
-    const ok = confirm(`Warning: station time conflict found.\n\n${text}\n\nSave anyway?`);
+  const activeGroups = getActiveGroupsAtStation(station.id).filter(item => item.id !== selectedGroupId);
+  if (station.capacity !== Infinity && activeGroups.length >= station.capacity) {
+    const names = activeGroups.map(item => item.group.name).join(", ");
+    const ok = confirm(`${station.name} is already full.\nCurrently there: ${names}\n\nStart anyway?`);
     if (!ok) return;
   }
 
-  groups[selectedGroupId] ||= { name: selectedGroupId, status: "active", route: [] };
-  groups[selectedGroupId].route = stops;
+  const startMs = Date.now();
+  groups[selectedGroupId] ||= { name: selectedGroupId, status: "active" };
+  groups[selectedGroupId].active = {
+    locationId: station.locationId,
+    locationName: station.locationName,
+    stationId: station.id,
+    stationName: station.name,
+    startMs,
+    duration,
+    endMs: startMs + duration * 60 * 1000
+  };
+  groups[selectedGroupId].status = "active";
+  groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   const synced = await saveAllGroups();
   updateCurrentDisplay();
   renderOverview();
-  alert(synced ? "Route saved and synced." : "Route saved only on this phone.");
+  alert(synced ? "Started and synced." : "Started only on this phone.");
+}
+
+async function finishStation() {
+  if (!groups[selectedGroupId]) return;
+  groups[selectedGroupId].active = null;
+  groups[selectedGroupId].status = "finished early";
+  groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const synced = await saveAllGroups();
+  updateCurrentDisplay();
+  renderOverview();
+  alert(synced ? "Finished and synced." : "Finished only on this phone.");
 }
 
 async function setStatus(status) {
-  groups[selectedGroupId] ||= { name: selectedGroupId, route: [] };
+  groups[selectedGroupId] ||= { name: selectedGroupId, active: null };
   groups[selectedGroupId].status = status;
   groups[selectedGroupId].lastStatusTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const synced = await saveAllGroups();
@@ -268,155 +302,117 @@ async function setStatus(status) {
   renderOverview();
 }
 
-function getCurrentStop(group) {
-  const route = group?.route || [];
-  if (!route.length) return { current: null, next: null, ended: false };
-
-  const now = new Date();
-  const minutesNow = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-
-  for (let i = 0; i < route.length; i++) {
-    const start = timeToMinutes(route[i].start);
-    const end = start + Number(route[i].duration || 15);
-    if (minutesNow >= start && minutesNow < end) {
-      return { current: route[i], next: route[i + 1] || null, secondsLeft: Math.max(0, Math.round((end - minutesNow) * 60)), ended: false };
-    }
-    if (minutesNow < start) {
-      return { current: null, next: route[i], secondsLeft: Math.round((start - minutesNow) * 60), ended: false };
-    }
-  }
-  return { current: route[route.length - 1], next: null, secondsLeft: 0, ended: true };
-}
-
 function updateCurrentDisplay() {
   const group = groups[selectedGroupId];
-  const state = getCurrentStop(group);
+  const active = group?.active;
 
-  if (!state.current && state.next) {
-    $("currentStation").textContent = "Not started yet";
-    $("timeLeft").textContent = formatSeconds(state.secondsLeft);
-    $("currentWindow").textContent = `Starts at ${state.next.start}`;
-    $("nextStation").textContent = `First: ${state.next.station}`;
-    return;
-  }
-
-  if (!state.current) {
-    $("currentStation").textContent = "No route yet";
+  if (!active) {
+    $("currentStation").textContent = "Not started";
     $("timeLeft").textContent = "--:--";
-    $("currentWindow").textContent = "Add your route below.";
-    $("nextStation").textContent = "Next: -";
+    $("currentWindow").textContent = "Choose a station and press Start now.";
+    $("nextStation").textContent = "Location: -";
     return;
   }
 
-  $("currentStation").textContent = state.current.station;
-  $("timeLeft").textContent = state.ended ? "00:00" : formatSeconds(state.secondsLeft);
-  $("currentWindow").textContent = state.ended ? "Route finished." : `${state.current.start} for ${state.current.duration} minutes`;
-  $("nextStation").textContent = state.next ? `Next: ${state.next.station} at ${state.next.start}` : "Next: none";
+  const left = Math.max(0, Math.round((active.endMs - Date.now()) / 1000));
+  $("currentStation").textContent = active.stationName;
+  $("timeLeft").textContent = formatSeconds(left);
+  $("currentWindow").textContent = `${active.duration} minutes · started ${new Date(active.startMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  $("nextStation").textContent = `Location: ${active.locationName}`;
 
-  if (state.secondsLeft === 0 || state.ended) {
+  if (left === 0) {
     $("timeLeft").classList.add("alertDone");
-    maybeNotify("Station time finished", state.next ? `Move to ${state.next.station}` : "Route finished");
+    maybeNotify("Station time finished", "Press Finish or choose the next station.");
   } else {
     $("timeLeft").classList.remove("alertDone");
   }
 }
 
-function checkRouteConflicts() {
-  if (!selectedGroupId) return;
-  const stops = getStopsFromUI();
-  const conflicts = findRouteConflicts(stops, selectedGroupId);
+function checkLiveCapacity() {
+  const warning = $("capacityWarning");
+  if (!warning) return;
+  const station = getStationInfo($("stationSelect")?.value);
+  warning.classList.add("hidden");
+  warning.textContent = "";
+  if (!station || station.capacity === Infinity) return;
 
-  document.querySelectorAll(".stop").forEach((row, index) => {
-    const text = row.querySelector(".conflictText");
-    const stop = stops[index];
-    row.classList.remove("conflict");
-    text.classList.add("hidden");
-    text.textContent = "";
-    if (!stop) return;
-
-    const matches = conflicts.filter(c => c.station === stop.station && c.start === stop.start);
-    if (!matches.length) return;
-
-    row.classList.add("conflict");
-    text.classList.remove("hidden");
-    text.textContent = `Conflict: ${matches.map(m => m.otherGroup).join(", ")} already chose this station during this time.`;
-  });
-}
-
-function findRouteConflicts(stops, groupId) {
-  const conflicts = [];
-  for (const stop of stops) {
-    const info = getStationInfo(stop.station);
-    if (info.capacity === Infinity) continue;
-    const start = timeToMinutes(stop.start);
-    const end = start + Number(stop.duration || 15);
-
-    for (const [otherId, otherGroup] of Object.entries(groups)) {
-      if (otherId === groupId) continue;
-      for (const otherStop of otherGroup.route || []) {
-        if (normalizeStation(otherStop.station) !== stop.station) continue;
-        const otherStart = timeToMinutes(otherStop.start);
-        const otherEnd = otherStart + Number(otherStop.duration || 15);
-        if (rangesOverlap(start, end, otherStart, otherEnd)) {
-          conflicts.push({
-            station: stop.station,
-            start: stop.start,
-            end: minutesToTime(end),
-            otherGroup: otherGroup.name || otherId,
-            unlimited: false
-          });
-        }
-      }
-    }
+  const activeGroups = getActiveGroupsAtStation(station.id).filter(item => item.id !== selectedGroupId);
+  if (activeGroups.length >= station.capacity) {
+    warning.classList.remove("hidden");
+    warning.textContent = `Full now: ${activeGroups.map(item => item.group.name).join(", ")} already at this station.`;
+  } else if (activeGroups.length > 0) {
+    warning.classList.remove("hidden");
+    warning.textContent = `Currently there: ${activeGroups.map(item => item.group.name).join(", ")}. Capacity: ${station.capacity}.`;
   }
-  return conflicts;
 }
 
 function renderOverview() {
   const byStation = {};
-  for (const station of STATIONS) byStation[station.name] = [];
+  for (const station of ALL_STATIONS) byStation[station.id] = [];
+  byStation.notStarted = [];
 
   for (const [id, group] of Object.entries(groups)) {
-    const state = getCurrentStop(group);
-    const station = normalizeStation(state.current?.station || state.next?.station || "No route");
-    byStation[station] ||= [];
-    byStation[station].push({ id, group, state });
+    const active = group.active;
+    if (!active) {
+      byStation.notStarted.push({ id, group });
+      continue;
+    }
+    byStation[active.stationId] ||= [];
+    byStation[active.stationId].push({ id, group });
   }
 
   const container = $("stationsOverview");
   container.innerHTML = "";
-  Object.keys(byStation).forEach(station => {
-    const box = document.createElement("div");
-    const list = byStation[station];
-    const info = getStationInfo(station);
-    const isOver = info.capacity !== Infinity && list.length > info.capacity;
-    const limitText = info.capacity === Infinity ? "no limit" : `limit ${info.capacity}`;
-    box.className = "stationBox" + (isOver ? " over" : "");
-    box.innerHTML = `<div class="stationTitle"><span dir="rtl">${escapeHtml(station)}</span><span>${list.length} groups · ${limitText}</span></div>`;
-    list.forEach(({ group }) => {
-      const pill = document.createElement("span");
-      const status = group.status || "active";
-      pill.className = "groupPill" + (status === "waiting" ? " waiting" : status === "delayed" ? " delayed" : status === "finished early" ? " good" : "");
-      pill.textContent = `${group.name || "Group"} - ${status}`;
-      box.appendChild(pill);
+
+  LOCATIONS.forEach(location => {
+    const heading = document.createElement("h3");
+    heading.textContent = location.name;
+    heading.dir = "rtl";
+    container.appendChild(heading);
+
+    location.stations.forEach(station => {
+      const list = byStation[station.id] || [];
+      const isOver = station.capacity !== Infinity && list.length > station.capacity;
+      const limitText = station.capacity === Infinity ? "no limit" : `limit ${station.capacity}`;
+      const box = document.createElement("div");
+      box.className = "stationBox" + (isOver ? " over" : "");
+      box.innerHTML = `<div class="stationTitle"><span dir="rtl">${escapeHtml(station.name)}</span><span>${list.length} groups · ${limitText}</span></div>`;
+      list.forEach(({ group }) => {
+        const pill = document.createElement("span");
+        const status = group.status || "active";
+        const left = group.active ? Math.max(0, Math.round((group.active.endMs - Date.now()) / 1000)) : 0;
+        pill.className = "groupPill" + (status === "waiting" ? " waiting" : status === "delayed" ? " delayed" : status === "finished early" ? " good" : "");
+        pill.textContent = `${group.name} - ${status} - ${formatSeconds(left)}`;
+        box.appendChild(pill);
+      });
+      container.appendChild(box);
     });
-    container.appendChild(box);
   });
+
+  const idleList = byStation.notStarted || [];
+  const idleBox = document.createElement("div");
+  idleBox.className = "stationBox";
+  idleBox.innerHTML = `<div class="stationTitle"><span>Not started / finished</span><span>${idleList.length} groups</span></div>`;
+  idleList.forEach(({ group }) => {
+    const pill = document.createElement("span");
+    pill.className = "groupPill";
+    pill.textContent = `${group.name} - ${group.status || "not started"}`;
+    idleBox.appendChild(pill);
+  });
+  container.appendChild(idleBox);
 }
 
-function rangesOverlap(aStart, aEnd, bStart, bEnd) {
-  return aStart < bEnd && bStart < aEnd;
+function getActiveGroupsAtStation(stationId) {
+  return Object.entries(groups)
+    .filter(([, group]) => group.active?.stationId === stationId)
+    .map(([id, group]) => ({ id, group }));
 }
 
-function timeToMinutes(t) {
-  const [h, m] = String(t || "00:00").split(":").map(Number);
-  return h * 60 + m;
-}
-
-function minutesToTime(minutes) {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = Math.round(minutes % 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+function getStationInfo(value) {
+  if (!value) return null;
+  const oldGrassTypo = "ספסלים בחוץ, אפשר לשבת על הדשה";
+  const normalized = value === oldGrassTypo ? "ספסלים בחוץ, אפשר לשבת על הדשא" : value;
+  return ALL_STATIONS.find(station => station.id === normalized || station.name === normalized) || null;
 }
 
 function formatSeconds(sec) {
